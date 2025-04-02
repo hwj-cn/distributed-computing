@@ -9,7 +9,17 @@ ThreadPool::ThreadPool(size_t num_threads) : stop_(false) {
 }
 
 ThreadPool::~ThreadPool() {
-    
+    stop_ = true;
+
+    for (size_t i = 0; i < workers_.size(); ++i) {
+        task_queue_.push([] {});
+    }
+
+    for (auto& worker : workers_) {
+        if (worker.joinable()) {
+            worker.join();
+        }
+    }
 }
 
 void ThreadPool::workerLoop() {
@@ -25,28 +35,4 @@ void ThreadPool::workerLoop() {
             }
         }
     }
-}
-
-TaskInfo ThreadPool::submit(std::function<void()> f) {
-    TaskInfo info;
-
-    info.task_id = ++task_id_counter_;
-    info.node_id = "localhost";
-    info.submit_time = std::chrono::system_clock::now();
-
-    auto task = [f, info]() mutable {
-        auto start = std::chrono::system_clock::now();
-
-        f();
-
-        auto end = std::chrono::system_clock::now();
-        info.exec_duration = end - start;
-        // 后续可加 result 存储逻辑
-        // 此处 info 是副本，返回不了主线程，可后面加回调或 future
-    };
-
-
-    task_queue_.push(task);
-
-    return info;
 }
