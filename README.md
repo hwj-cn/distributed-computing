@@ -1,6 +1,6 @@
 # distributed-computing
 
-## 构建步骤（Build）
+## 构建（Build）
 ```shell
 mkdir -p build
 cd build/
@@ -8,7 +8,7 @@ cmake ..
 make
 ```
 
-## 运行步骤（Run）
+## 运行（Run）
 ```shell
 build/main
 ```
