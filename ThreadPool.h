@@ -9,12 +9,21 @@
 #include <future>
 #include "SafeQueue.h"
 
+enum class TaskStatus {
+    Submitted,
+    Running,
+    Completed,
+    Failed
+};
+
 struct TaskInfo {
     size_t task_id;
+    TaskStatus status;
     std::string node_id;    // 机器 ID
     std::chrono::system_clock::time_point submit_time;
     std::chrono::system_clock::duration exec_duration;
     std::any result;
+    std::string error;
 };
 
 class ThreadPool {
@@ -39,6 +48,46 @@ public:
         task_queue_.push([task]() { (*task)(); });
 
         return res;
+    }
+
+    template<typename F, typename... Args>
+    auto submit_with_info(F&& f, Args&&... args)
+        -> std::pair<
+            std::shared_ptr<TaskInfo>,
+            std::future<std::invoke_result_t<F, Args...>>
+        > {
+
+        using return_type = std::invoke_result_t<F, Args...>;
+
+        auto task_info = std::make_shared<TaskInfo>();
+        task_info->task_id = task_id_counter_.fetch_add(1);
+        task_info->status = TaskStatus::Submitted;
+        task_info->submit_time = std::chrono::system_clock::now();
+
+
+        auto task = std::make_shared<std::packaged_task<return_type()>>(
+            std::bind(std::forward<F>(f), std::forward<Args>(args)...)
+        );
+
+        std::future<return_type> res = task->get_future();
+
+        task_queue_.push([task, task_info]() {
+            auto start = std::chrono::system_clock::now();
+            task_info->status = TaskStatus::Running;
+
+            try {
+                (*task)();
+                task_info->status = TaskStatus::Completed;
+            } catch (const std::exception& e) {
+                task_info->status = TaskStatus::Failed;
+                task_info->error = e.what();
+            }
+
+            auto end = std::chrono::system_clock::now();
+            task_info->exec_duration = end - start;
+        });
+
+        return {task_info, std::move(res)};
     }
 
 private:
